@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms, models
 import json
+import requests
 
 # Config parameters
 IMG_SIZE = (224, 224)
@@ -28,6 +29,23 @@ BATCH_SIZE = 32
 EPOCHS = 20
 NUM_CLASSES = 2  # Acceptable vs Unacceptable
 MODEL_PATH = 'milk_quality_model.keras'
+
+# Auto-download model if missing from Google Drive
+
+def download_model_if_missing():
+    if not os.path.exists(MODEL_PATH):
+        print("[INFO] Model not found. Downloading from Google Drive...")
+        file_id = "1n9MjH-Opw6F1HKMPAeEiO5tClBWV_Kjg"
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            with open(MODEL_PATH, 'wb') as f:
+                f.write(response.content)
+            print("[INFO] Model download complete ✅")
+        else:
+            print("[ERROR] Failed to download model. Status code:", response.status_code)
+
+download_model_if_missing()
 
 class MilkQualityTester:
     def __init__(self):
@@ -82,9 +100,7 @@ class MilkQualityTester:
 
         history = self.model.fit(
             train_generator,
-            steps_per_epoch=train_generator.samples // BATCH_SIZE,
             validation_data=validation_generator,
-            validation_steps=validation_generator.samples // BATCH_SIZE,
             epochs=EPOCHS,
             callbacks=[checkpoint, early_stop]
         )
@@ -165,7 +181,7 @@ app = Flask(__name__)
 milk_tester = MilkQualityTester()
 
 try:
-    milk_tester.load_model('milk_quality_model.keras')
+    milk_tester.load_model(MODEL_PATH)
 except:
     print("No pre-trained model found.")
 
@@ -209,5 +225,5 @@ def get_result_template():
     return """<html>... (same content as before) ...</html>"""
 
 if __name__ == '__main__':
-    milk_tester.train('training_data')
+    # milk_tester.train('training_data')  # Optional training line, can be removed in deployment
     app.run(debug=True)
