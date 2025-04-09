@@ -27,11 +27,10 @@ import requests
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
 EPOCHS = 20
-NUM_CLASSES = 2  # Acceptable vs Unacceptable
+NUM_CLASSES = 2
 MODEL_PATH = 'milk_quality_model.keras'
 
-# Auto-download model if missing from Google Drive
-
+# Download model if not present
 def download_model_if_missing():
     if not os.path.exists(MODEL_PATH):
         print("[INFO] Model not found. Downloading from Google Drive...")
@@ -50,7 +49,7 @@ download_model_if_missing()
 class MilkQualityTester:
     def __init__(self):
         self.model = self._build_model()
-        self.threshold = 0.5  # Default threshold for binary classification
+        self.threshold = 0.5
 
     def _build_model(self):
         base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
@@ -62,49 +61,8 @@ class MilkQualityTester:
         model = Model(inputs=base_model.input, outputs=predictions)
         for layer in base_model.layers:
             layer.trainable = False
-        model.compile(optimizer=Adam(learning_rate=0.001), 
-                      loss='binary_crossentropy', 
-                      metrics=['accuracy'])
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
         return model
-
-    def train(self, train_data_dir):
-        train_datagen = ImageDataGenerator(
-            rescale=1./255,
-            rotation_range=20,
-            width_shift_range=0.2,
-            height_shift_range=0.2,
-            shear_range=0.2,
-            zoom_range=0.2,
-            horizontal_flip=True,
-            validation_split=0.2
-        )
-
-        train_generator = train_datagen.flow_from_directory(
-            train_data_dir,
-            target_size=IMG_SIZE,
-            batch_size=BATCH_SIZE,
-            class_mode='binary',
-            subset='training'
-        )
-
-        validation_generator = train_datagen.flow_from_directory(
-            train_data_dir,
-            target_size=IMG_SIZE,
-            batch_size=BATCH_SIZE,
-            class_mode='binary',
-            subset='validation'
-        )
-
-        checkpoint = ModelCheckpoint(MODEL_PATH, monitor='val_accuracy', save_best_only=True, mode='max')
-        early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-
-        history = self.model.fit(
-            train_generator,
-            validation_data=validation_generator,
-            epochs=EPOCHS,
-            callbacks=[checkpoint, early_stop]
-        )
-        return history
 
     def preprocess_image(self, image_path):
         if isinstance(image_path, str):
@@ -176,7 +134,6 @@ class MilkQualityTester:
         else:
             print(f"No model found at {model_path}")
 
-# Flask App
 app = Flask(__name__)
 milk_tester = MilkQualityTester()
 
@@ -187,15 +144,26 @@ except:
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return """
+    <html>
+    <head><title>Milk Quality Testing</title></head>
+    <body style='font-family: Arial; padding: 40px;'>
+        <h2>Upload a Milk Sample Image</h2>
+        <form method="POST" action="/analyze" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required><br><br>
+            <button type="submit">Analyze</button>
+        </form>
+    </body>
+    </html>
+    """
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     if 'file' not in request.files:
-        return render_template('index.html', error='No file part')
+        return "No file part"
     file = request.files['file']
     if file.filename == '':
-        return render_template('index.html', error='No selected file')
+        return "No selected file"
     img_stream = file.read()
     nparr = np.frombuffer(img_stream, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -206,24 +174,42 @@ def analyze():
     buf = io.BytesIO()
     roi_pil.save(buf, format='JPEG')
     roi_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    return render_template('result.html', result=result, roi_image=roi_b64)
 
-@app.route('/download_report/<timestamp>')
-def download_report(timestamp):
-    report_str = f"Milk Quality Analysis Report\nTimestamp: {timestamp}\n"
-    buffer = io.BytesIO()
-    buffer.write(report_str.encode())
-    buffer.seek(0)
-    return send_file(buffer, download_name='milk_quality_report.txt', as_attachment=True)
+    return f"""
+    <html>
+    <head>
+        <title>Milk Quality Results</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background-color: #f4f6f8; color: #333; padding: 30px; }}
+            .container {{ max-width: 700px; margin: auto; background: white; padding: 25px 40px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }}
+            img {{ max-width: 300px; border-radius: 12px; }}
+            .result {{ margin-top: 20px; padding: 20px; border-radius: 12px; background-color: {'#d4edda' if result['quality_class'] == 'Acceptable' else '#f8d7da'}; color: {'#155724' if result['quality_class'] == 'Acceptable' else '#721c24'}; }}
+            .btn {{ margin-top: 20px; padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 8px; text-decoration: none; font-size: 16px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Milk Quality Analysis Results</h1>
+            <img src='data:image/jpeg;base64,{roi_b64}' alt='Analyzed Sample'><br>
 
-@app.route('/templates/index.html')
-def get_index_template():
-    return """<html>... (same content as before) ...</html>"""
+            <div class="result">
+                <h2>{result['quality_class']}</h2>
+                <p><strong>Confidence:</strong> {round((result['prediction'] if result['quality_class']=='Unacceptable' else 1 - result['prediction']) * 100, 2)}%</p>
+                <p><strong>Analysis Time:</strong> {result['timestamp']}</p>
+            </div>
 
-@app.route('/templates/result.html')
-def get_result_template():
-    return """<html>... (same content as before) ...</html>"""
+            <h3>Color Features</h3>
+            <ul style="list-style-type:none; padding: 0;">
+                <li><strong>Blue Ratio:</strong> {round(result['color_features']['blue_ratio'], 3)}</li>
+                <li><strong>Pink Ratio:</strong> {round(result['color_features']['pink_ratio'], 3)}</li>
+                <li><strong>Saturation:</strong> {round(result['color_features']['mean_s'], 1)}</li>
+            </ul>
+
+            <a href="/" class="btn">Test Another Sample</a>
+        </div>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
-    # milk_tester.train('training_data')  # Optional training line, can be removed in deployment
     app.run(debug=True)
