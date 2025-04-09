@@ -1,0 +1,35 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Analysis Results</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .container { max-width: 800px; margin: 0 auto; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .result { padding: 20px; border: 1px solid #ccc; margin-bottom: 20px; }
+            .acceptable { background-color: #DFF2BF; }
+            .unacceptable { background-color: #FFBABA; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Milk Quality Analysis Results</h1>
+            </div>
+            
+            <div class="result acceptable">
+                <h2>Quality Classification: {{quality}}</h2>
+                <p>Confidence: {{confidence}}%</p>
+                <p>Analysis Time: {{timestamp}}</p>
+            </div>
+            
+            <div>
+                <a href="/" style="text-decoration: none;">
+                    <button style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer;">Test Another Sample</button>
+                </a>
+            </div>
+        </div>
+    </body>
+    </html>
+    

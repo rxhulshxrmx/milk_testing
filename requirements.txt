@@ -1,0 +1,9 @@
+Flask
+opencv-python
+numpy
+pandas
+matplotlib
+tensorflow
+Pillow
+torch
+torchvision
