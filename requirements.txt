@@ -7,3 +7,4 @@ tensorflow
 Pillow
 torch
 torchvision
+scikit-learn
